@@ -32,7 +32,6 @@
 #include "../shared/HAL_SPI.h"
 
 #include "fastio.h"
-#include "watchdog.h"
 #include "i2s.h"
 
 #if ENABLED(WIFISUPPORT)
@@ -74,6 +73,7 @@
 // Types
 // ------------------------
 
+typedef double isr_float_t;   // FPU ops are used for single-precision, so use double for ISRs.
 typedef int16_t pin_t;
 
 class Servo;
@@ -88,7 +88,7 @@ typedef Servo hal_servo_t;
 //
 void tone(const pin_t _pin, const unsigned int frequency, const unsigned long duration=0);
 void noTone(const pin_t _pin);
-
+int8_t get_pwm_channel(const pin_t pin, const uint32_t freq, const uint16_t res);
 void analogWrite(const pin_t pin, const uint16_t value, const uint32_t freq=PWM_FREQUENCY, const uint16_t res=8);
 
 //
@@ -171,9 +171,13 @@ public:
   // Earliest possible init, before setup()
   MarlinHAL() {}
 
-  static void init() {}  // Called early in setup()
-  static void init_board();     // Called less early in setup()
-  static void reboot();         // Restart the firmware
+  // Watchdog
+  static void watchdog_init()    IF_DISABLED(USE_WATCHDOG, {});
+  static void watchdog_refresh() IF_DISABLED(USE_WATCHDOG, {});
+
+  static void init() {}        // Called early in setup()
+  static void init_board();    // Called less early in setup()
+  static void reboot();        // Restart the firmware
 
   // Interrupts
   static portMUX_TYPE spinlock;
@@ -205,7 +209,7 @@ public:
   // Called by Temperature::init for each sensor at startup
   static void adc_enable(const pin_t pin) {}
 
-  // Begin ADC sampling on the given channel
+  // Begin ADC sampling on the given pin. Called from Temperature::isr!
   static void adc_start(const pin_t pin);
 
   // Is the ADC ready for reading?
